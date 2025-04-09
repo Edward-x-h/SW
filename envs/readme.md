@@ -1,9 +1,7 @@
 # POMDP Environments
 
 ## Overview
-- `meta/`: Meta RL environments
 - `pomdp/`: "standard" POMDP environments
-- `rl-generalization`: Generalization in RL and Robust RL environments
 
 ## Normalized Action Space
 We make sure every environment has continuous action space [-1, 1]^|A|, exposed to the policy. Policy should not use `self.action_space.high` or `self.action_space.low`.
