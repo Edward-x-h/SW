@@ -1,12 +1,3 @@
-""" Recommended Architecture
-Separate RNN architecture is inspired by a popular RL repo
-https://github.com/quantumiracle/Popular-RL-Algorithms/blob/master/POMDP/common/value_networks.py#L110
-which has another branch to encode current state (and action)
-
-Hidden state update functions get_hidden_state() is inspired by varibad encoder 
-https://github.com/lmzintgraf/varibad/blob/master/models/encoder.py
-"""
-
 import torch
 from copy import deepcopy
 import torch.nn as nn
@@ -21,9 +12,6 @@ from utils import logger
 
 
 class ModelFreeOffPolicy_Separate_RNN(nn.Module):
-    """Recommended Architecture
-    Recurrent Actor and Recurrent Critic with separate RNNs
-    """
 
     ARCH = "memory"
     Markov_Actor = False
@@ -124,15 +112,7 @@ class ModelFreeOffPolicy_Separate_RNN(nn.Module):
         return current_action_tuple, current_internal_state
 
     def forward(self, actions, rewards, observs, dones, masks):
-        """
-        For actions a, rewards r, observs o, dones d: (T+1, B, dim)
-                where for each t in [0, T], take action a[t], then receive reward r[t], done d[t], and next obs o[t]
-                the hidden state h[t](, c[t]) = RNN(h[t-1](, c[t-1]), a[t], r[t], o[t])
-                specially, a[0]=r[0]=d[0]=h[0]=c[0]=0.0, o[0] is the initial obs
-
-        The loss is still on the Q value Q(h[t], a[t]) with real actions taken, i.e. t in [1, T]
-                based on Masks (T, B, 1)
-        """
+       
         assert (
             actions.dim()
             == rewards.dim()
@@ -149,8 +129,6 @@ class ModelFreeOffPolicy_Separate_RNN(nn.Module):
             == masks.shape[0] + 1
         )
         num_valid = torch.clamp(masks.sum(), min=1.0)  # as denominator of loss
-
-        ### 1. Critic loss
         (q1_pred, q2_pred), q_target = self.algo.critic_loss(
             markov_actor=self.Markov_Actor,
             markov_critic=self.Markov_Critic,
@@ -165,9 +143,6 @@ class ModelFreeOffPolicy_Separate_RNN(nn.Module):
             gamma=self.gamma,
         )
 
-        # masked Bellman error: masks (T,B,1) ignore the invalid error
-        # this is not equal to masks * q1_pred, cuz the denominator in mean()
-        # 	should depend on masks > 0.0, not a constant B*T
         q1_pred, q2_pred = q1_pred * masks, q2_pred * masks
         q_target = q_target * masks
         qf1_loss = ((q1_pred - q_target) ** 2).sum() / num_valid  # TD error
@@ -177,7 +152,6 @@ class ModelFreeOffPolicy_Separate_RNN(nn.Module):
         (qf1_loss + qf2_loss).backward()
         self.critic_optimizer.step()
 
-        ### 2. Actor loss
         policy_loss, log_probs = self.algo.actor_loss(
             markov_actor=self.Markov_Actor,
             markov_critic=self.Markov_Critic,
@@ -189,7 +163,6 @@ class ModelFreeOffPolicy_Separate_RNN(nn.Module):
             actions=actions,
             rewards=rewards,
         )
-        # masked policy_loss
         policy_loss = (policy_loss * masks).sum() / num_valid
 
         self.actor_optimizer.zero_grad()
@@ -202,10 +175,8 @@ class ModelFreeOffPolicy_Separate_RNN(nn.Module):
             "policy_loss": policy_loss.item(),
         }
 
-        ### 3. soft update
         self.soft_target_update()
 
-        ### 4. update others like alpha
         if log_probs is not None:
             # extract valid log_probs
             with torch.no_grad():
